@@ -40,11 +40,14 @@ class Adder(object):
 
     def _create_initialize_input_circuit(self, input: str, register):
         num_bits = register.size
-        assert len(input) <= num_bits
+        num_input_bits = len(input)
+        assert num_input_bits <= num_bits
         quantum_circuit = QuantumCircuit(register)
-        for i in range(len(input)):
+        for i in range(num_input_bits):
             if input[i] == "1":
-                quantum_circuit.x(register[num_bits - (i + 1)])
+                quantum_circuit.x(
+                    register[num_bits - (i + (num_bits - num_input_bits + 1))]
+                )
         return quantum_circuit
 
     def _create_qft_circuit(self, n, register):
@@ -63,8 +66,8 @@ class Adder(object):
         quantum_circuit = QuantumCircuit(a_register, b_register)
         for i in range(0, n):
             quantum_circuit.cu1(
-                math.pi / float(2 ** (i)),
-                b_register[n - 1 - i],
+                math.pi / float(2 ** i),
+                b_register[n - i - 1],
                 a_register[n - 1],
             )
         return quantum_circuit
@@ -73,7 +76,7 @@ class Adder(object):
         quantum_circuit = QuantumCircuit(register)
         for i in range(0, n - 1):
             quantum_circuit.cu1(
-                -1 * math.pi / float(2 ** (n - 1 - i)),
+                -math.pi / float(2 ** (n - 1 - i)),
                 register[i],
                 register[n - 1],
             )
@@ -100,21 +103,31 @@ class Adder(object):
 
         # qft
         for i in range(num_bits):
-            quantum_circuit += self._create_qft_circuit(num_bits - i, a_register)
+            quantum_circuit += self._create_qft_circuit(
+                num_bits - i,
+                a_register,
+            )
 
         # add
         for i in range(num_bits):
             quantum_circuit += self._create_add_circuit(
-                num_bits - 1, a_register, b_register
+                num_bits - i,
+                a_register,
+                b_register,
             )
-        # inverse qftoutput_register
-        for i in range(num_bits):
-            quantum_circuit += self._create_inverse_qft_circuit(i, a_register)
 
-        return quantum_circuit
+        # inverse qft
+        for i in range(num_bits - 1, -1, -1):
+            quantum_circuit += self._create_inverse_qft_circuit(
+                num_bits - i,
+                a_register,
+            )
 
-    def create_measure_circuit(self, num_bits: int, output_register):
+        return (quantum_circuit, a_register)
 
+    def create_measure_circuit(self, output_register):
+
+        num_bits = output_register.size
         result_classical_register = ClassicalRegister(num_bits)
 
         quantum_circuit = QuantumCircuit(output_register, result_classical_register)
@@ -134,13 +147,16 @@ class Adder(object):
         return self._create_qft_circuit(num_bits, register).draw(output=output)
 
     def draw_add_circuit(self, num_bits: int, output: str):
-        a_register = QuantumRegister(num_bits, "a")
-        b_register = QuantumRegister(num_bits, "b")
-        return self._create_add_circuit(num_bits, a_register, b_register).draw(output)
+        a_register = QuantumRegister(num_bits + 1, "a")
+        b_register = QuantumRegister(num_bits + 1, "b")
+        return self._create_add_circuit(num_bits + 1, a_register, b_register).draw(
+            output
+        )
 
     def draw_inverse_qft_circuit(self, num_bits: int, output: str):
         register = QuantumRegister(num_bits)
         return self._create_inverse_qft_circuit(num_bits, register).draw(output)
 
     def draw_adder_circuit(self, a: str, b: str, output: str):
-        return self.create_adder_circuit(a, b).draw(output)
+        quantum_circuit, output_register = self.create_adder_circuit(a, b)
+        return quantum_circuit.draw(output)
